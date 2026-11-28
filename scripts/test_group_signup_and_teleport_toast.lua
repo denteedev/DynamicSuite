@@ -127,6 +127,12 @@ local function CreateHarness(opts)
                 shortName = "Heroic",
                 isMythicPlusActivity = false,
             },
+            [9002] = {
+                categoryID = 2,
+                fullName = "The Stonevault (Heroic)",
+                shortName = "Heroic",
+                isMythicPlusActivity = false,
+            },
         },
         searchResults = {},
         appStatusByID = {},
@@ -453,6 +459,8 @@ local function CreateHarness(opts)
     env.PVEFrame._level = 10
 
     env.LFGListFrame = NewWidget("Frame", "LFGListFrame", env.PVEFrame)
+    env.LFGListFrame.EntryCreation = NewWidget("Frame", nil, env.LFGListFrame)
+    env.LFGListFrame.EntryCreation.Name = NewWidget("EditBox", nil, env.LFGListFrame.EntryCreation)
     env.LFGListFrame.SearchPanel = NewWidget("Frame", nil, env.LFGListFrame)
     env.LFGListFrame.SearchPanel.RefreshButton = NewWidget("Button", nil, env.LFGListFrame.SearchPanel)
     env.LFGListFrame.SearchPanel.ScrollBox = NewWidget("Frame", nil, env.LFGListFrame.SearchPanel)
@@ -658,11 +666,13 @@ RunTest("T1: True 1-Click Sign-Up (Sync Click, Shift/Alt Bypass, Manual Sign Up,
         dlg._forceSignUpDisabled = false
         dlg:Hide()
 
-        -- Manual open after a prior cursor-snap restores standard centred position
+        -- Manual open after a prior cursor-snap restores standard centred position,
+        -- AND any pending 0-delay fallback snap timer must NOT re-snap the manually opened dialog!
         env.LFGListApplicationDialog_Show(dlg, 103)
+        h.AdvanceTime(0.05)
         local rPt, _, rRelPt = dlg:GetPoint(1)
         assertEqual(rPt, "CENTER", addonFolder .. ": Manual open after fallback restores CENTER")
-        assertEqual(rRelPt, "CENTER", addonFolder .. ": Manual open after fallback clears cursor snap")
+        assertEqual(rRelPt, "CENTER", addonFolder .. ": Manual open after fallback clears cursor snap and resists stale timer")
         dlg:Hide()
     end
 
@@ -851,20 +861,82 @@ RunTest("T3: Host CreateListing/UpdateListing, 5/5 Auto-Delist, Relist Reset, Fr
     assertTrue(dg.teleportToast:IsShown(), "Relisting new dungeon shows toast immediately")
     assertEqual(dg.teleportToast.titleText:GetText(), "Murder Row (+14 fast)", "Toast switches cleanly to Murder Row (+14 fast)")
 
-    -- UpdateListing changes dungeon from Murder Row to Den of Nalorakk
+    -- Realistic async UpdateListing: changes dungeon from Murder Row (1171) to Den of Nalorakk (1172)
+    -- BEFORE server updates GetActiveEntryInfo (activeEntryInfo still holds stale Murder Row 1171 + "+14 fast"!)
     h.AdvanceTime(1.0)
+    env.LFGListFrame.EntryCreation.Name:SetText("+15 nalorakk")
+    env.C_LFGList.UpdateListing({ activityIDs = { 1172 } })
+    assertEqual(dg.teleportToast.titleText:GetText(), "Den of Nalorakk (+15 nalorakk)", "Async UpdateListing reads EntryCreation.Name and resists stale pre-ack GetActiveEntryInfo")
+
+    -- Mid-flight GROUP_ROSTER_UPDATE before server ack must NOT revert toast back to stale Murder Row
+    h.AdvanceTime(0.2)
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    assertEqual(dg.teleportToast.titleText:GetText(), "Den of Nalorakk (+15 nalorakk)", "Mid-flight roster update preserves updated dungeon before server ack")
+
+    -- Server ack arrives with secret entryInfo.name -> MUST preserve "+15 nalorakk" instead of clobbering it
+    h.state.activeEntryInfo = { activityIDs = { 1172 }, name = MakeStrictSecret("entryName") }
+    h.FireEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE")
+    assertEqual(dg.teleportToast.titleText:GetText(), "Den of Nalorakk (+15 nalorakk)", "Secret entryInfo.name preserves known listing title")
+
+    -- Server updates title explicitly to exact dungeon name -> no duplication
     h.state.activeEntryInfo = { activityIDs = { 1172 }, name = "Den of Nalorakk" }
+    env.LFGListFrame.EntryCreation.Name:SetText("Den of Nalorakk")
     env.C_LFGList.UpdateListing({ activityIDs = { 1172 }, name = "Den of Nalorakk" })
     assertEqual(dg.teleportToast.titleText:GetText(), "Den of Nalorakk", "UpdateListing updates toast cleanly without duplicating dungeon name")
 
-    -- Creating a non-dungeon (Raid) listing clears stale lastHostedDungeonMeta
+    -- Creating a non-dungeon (Raid) listing clears stale lastHostedDungeonMeta AND hides the stale dungeon toast
     h.AdvanceTime(1.0)
-    h.state.activeEntryInfo = { activityIDs = { 9001 }, name = "Heroic Raid" }
     env.C_LFGList.CreateListing({ activityIDs = { 9001 }, name = "Heroic Raid" })
     assertEqual(dg.lastHostedDungeonMeta, nil, "Non-dungeon Raid CreateListing clears stale lastHostedDungeonMeta")
+    assertEqual(dg.teleportToast:IsShown(), false, "Switching to a Raid listing hides stale dungeon teleport toast")
+
+    -- Non-season Heroic dungeon title avoids duplicate parenthetical when listingName matches base dungeon name
+    h.AdvanceTime(1.0)
+    h.state.activeEntryInfo = { activityIDs = { 9002 }, name = "The Stonevault" }
+    env.C_LFGList.CreateListing({ activityIDs = { 9002 }, name = "The Stonevault" })
+    assertTrue(dg.teleportToast:IsShown(), "Non-season Heroic dungeon listing shows teleport toast")
+    assertEqual(dg.teleportToast.titleText:GetText(), "The Stonevault (Heroic)", "Heroic dungeon title omits redundant base-name parenthetical")
+
+    -- Auto-faded toast must NOT resurrect on no-op GROUP_ROSTER_UPDATE or member drop, but MUST re-show on member increase
+    dg.teleportToast:Hide()
+    local showsAfterFade = dg.teleportToast._showCalls
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    assertEqual(dg.teleportToast:IsShown(), false, "No-op GROUP_ROSTER_UPDATE does not resurrect faded toast")
+    h.state.numGroupMembers = 3
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    assertEqual(dg.teleportToast:IsShown(), false, "Member drop while faded does not resurrect toast")
+    h.state.numGroupMembers = 5
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    assertTrue(dg.teleportToast:IsShown(), "Member increase to 5/5 re-shows faded toast cleanly")
+    assertTrue(dg.teleportToast._showCalls > showsAfterFade, "5/5 jump triggered fresh show")
+
+    -- Solo host with active listing >5s + solo GROUP_ROSTER_UPDATE + instant 5/5 auto-delist
+    h.state.inGroup = false
+    h.state.numGroupMembers = 0
+    h.state.hasActiveEntry = false
+    h.state.activeEntryInfo = nil
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    h.AdvanceTime(1.0)
+    env.LFGListFrame.EntryCreation.Name:SetText("+12 chill")
+    env.C_LFGList.CreateListing({ activityIDs = { 1170 } })
+    h.state.hasActiveEntry = true
+    h.state.activeEntryInfo = { activityIDs = { 1170 }, name = "+12 chill" }
+    h.FireEvent("LFG_LIST_ACTIVE_ENTRY_UPDATE")
+    h.AdvanceTime(10.0) -- well past 5s create grace window!
+    h.FireEvent("GROUP_ROSTER_UPDATE") -- solo roster event while listing is still active
+    assertTrue(dg.lastHostedDungeonMeta ~= nil, "Solo GROUP_ROSTER_UPDATE preserves lastHostedDungeonMeta while HasActiveEntryInfo() is true")
+    -- 4-man premade joins and auto-delists immediately
+    h.state.hasActiveEntry = false
+    h.state.activeEntryInfo = nil
+    h.state.inGroup = true
+    h.state.numGroupMembers = 5
+    h.FireEvent("GROUP_ROSTER_UPDATE")
+    assertTrue(dg.teleportToast:IsShown(), "Host toast fires on instant 5/5 auto-delist even >5s after CreateListing")
+    assertEqual(dg.teleportToast.titleText:GetText(), "Ruby Life Pools (+12 chill)", "Preserved full title on delayed 5/5 auto-delist")
 
     -- (3c) Standing inside a FINISHED dungeon (Ruby Life Pools, keystoneActive=false):
     --      joining/listing a DIFFERENT dungeon (Murder Row) MUST show toast;
+    --      /reload (PLAYER_ENTERING_WORLD) inside finished dungeon MUST also show toast;
     --      joining/listing the SAME dungeon (Ruby Life Pools) MUST skip;
     --      active keystone MUST skip.
     dg:HideTeleportToast(false)
@@ -876,7 +948,7 @@ RunTest("T3: Host CreateListing/UpdateListing, 5/5 Auto-Delist, Relist Reset, Fr
     h.state.instanceName = "Ruby Life Pools"
     h.state.keystoneActive = false
 
-    -- Different target dungeon (Murder Row) while inside finished Ruby Life Pools -> SHOWS
+    -- Different target dungeon (Murder Row) while inside finished Ruby Life Pools -> SHOWS on GROUP_ROSTER_UPDATE
     h.state.hasActiveEntry = true
     h.state.activeEntryInfo = { activityIDs = { 1171 }, name = "+13 go" }
     h.state.inGroup = true
@@ -884,6 +956,12 @@ RunTest("T3: Host CreateListing/UpdateListing, 5/5 Auto-Delist, Relist Reset, Fr
     h.FireEvent("GROUP_ROSTER_UPDATE")
     assertTrue(dg.teleportToast:IsShown(), "Joining/listing different dungeon from inside finished dungeon shows toast")
     assertEqual(dg.teleportToast.titleText:GetText(), "Murder Row (+13 go)", "Shows new target dungeon title from inside finished dungeon")
+
+    -- PLAYER_ENTERING_WORLD (/reload) while inside finished Ruby Life Pools with Murder Row group -> SHOWS
+    dg:HideTeleportToast(false)
+    dg.teleportToastDismissedForGroup = false
+    h.FireEvent("PLAYER_ENTERING_WORLD")
+    assertTrue(dg.teleportToast:IsShown(), "PLAYER_ENTERING_WORLD inside finished dungeon shows toast for a different target dungeon")
 
     -- Same target dungeon (Ruby Life Pools) while already inside Ruby Life Pools -> SKIPPED
     dg:HideTeleportToast(false)
@@ -983,7 +1061,8 @@ RunTest("T4: LFG_LIST_JOINED_GROUP & LFG_LIST_APPLICATION_STATUS_UPDATED Dedupli
         assertEqual(h.sounds[2].kit, env.SOUNDKIT.READY_CHECK, "Second sound is READY_CHECK chime")
     end
 
-    -- (4d) Dismissing toast between inviteaccepted and LFG_LIST_JOINED_GROUP does not resurrect it
+    -- (4d) Dismissing toast between inviteaccepted (plain rID) and LFG_LIST_JOINED_GROUP (secret rID!)
+    --      does NOT resurrect toast or double-play sound
     do
         local h = CreateHarness({ withSuite = true })
         local env = h.env
@@ -1002,10 +1081,37 @@ RunTest("T4: LFG_LIST_JOINED_GROUP & LFG_LIST_APPLICATION_STATUS_UPDATED Dedupli
         h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", "+10 chill")
         env.DynamicGroup:HideTeleportToast(true)
         h.AdvanceTime(0.1)
-        h.FireEvent("LFG_LIST_JOINED_GROUP", rID, "+10 chill")
+        h.FireEvent("LFG_LIST_JOINED_GROUP", MakeStrictSecret("rid"), MakeStrictSecret("gn"))
 
-        assertEqual(env.DynamicGroup.teleportToast:IsShown(), false, "Second event does not resurrect a dismissed toast")
-        assertEqual(#h.sounds, 1, "No duplicate sound after dismissal")
+        assertEqual(env.DynamicGroup.teleportToast:IsShown(), false, "Second event with secret resultID does not resurrect a dismissed toast")
+        assertEqual(#h.sounds, 1, "No duplicate sound after dismissal even when second event has secret resultID")
+    end
+
+    -- (4e) Event 1 has secret groupName (generic dungeon title) and Event 2 brings plain groupName at same member count
+    --      -> refreshes displayed toast title cleanly with ZERO duplicate sound
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local rID = 805
+        h.state.searchResults[rID] = { searchResultID = rID, activityIDs = { 1170 }, name = MakeStrictSecret("sn"), isDelisted = false }
+        env.C_LFGList.AcceptInvite(rID)
+        h.state.searchResults[rID] = nil
+        h.state.inGroup = true
+        h.state.numGroupMembers = 4
+
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", MakeStrictSecret("gn"))
+        assertEqual(env.DynamicGroup.teleportToast.titleText:GetText(), "Ruby Life Pools", "Event 1 shows full dungeon name with secret listing name")
+        assertEqual(#h.sounds, 1, "Event 1 plays single join sound")
+
+        h.AdvanceTime(0.05)
+        h.FireEvent("LFG_LIST_JOINED_GROUP", rID, "+12 blast")
+        assertEqual(env.DynamicGroup.teleportToast.titleText:GetText(), "Ruby Life Pools (+12 blast)", "Event 2 upgrades displayed toast title cleanly")
+        assertEqual(#h.sounds, 1, "Title-only upgrade plays ZERO duplicate sounds")
     end
 end)
 

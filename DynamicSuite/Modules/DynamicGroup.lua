@@ -2574,6 +2574,7 @@ end
 local lastSignUpResultID = nil
 local lastSignUpTime = 0
 local isPerformingAutoSignUp = false
+local _dgDialogState = setmetatable({}, { __mode = "k" })
 local OnLFGListApplicationDialogUpdateRoles
 local SnapDialogSignUpUnderCursor
 
@@ -2657,10 +2658,13 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     lastSignUpResultID = liveResultID
     lastSignUpTime = now
 
-    local dialog = _G.LFGListApplicationDialog
+    local function GetDialog()
+        return _G.LFGListApplicationDialog
+    end
     local function IsDialogShownNow()
-        if not dialog or type(dialog.IsShown) ~= "function" then return false end
-        local okS, shown = pcall(dialog.IsShown, dialog)
+        local dlg = GetDialog()
+        if not dlg or type(dlg.IsShown) ~= "function" then return false end
+        local okS, shown = pcall(dlg.IsShown, dlg)
         return (okS and not IsSecretValue(shown) and shown == true) or false
     end
 
@@ -2670,19 +2674,28 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     -- Open LFGListApplicationDialog directly with the exact clicked liveResultID;
     -- fall back cleanly to LFGListSearchPanel_SignUp (and SignUpButton:Click) if not yet shown.
     isPerformingAutoSignUp = wantAutoSubmit
+    local dialog = GetDialog()
     if dialog and type(_G.LFGListApplicationDialog_Show) == "function" then
         pcall(_G.LFGListApplicationDialog_Show, dialog, liveResultID)
     end
     if not IsDialogShownNow() and type(_G.LFGListSearchPanel_SignUp) == "function" then
         pcall(_G.LFGListSearchPanel_SignUp, sp)
     end
-    if not IsDialogShownNow() and sp.SignUpButton and sp.SignUpButton.IsEnabled and sp.SignUpButton:IsEnabled() and sp.SignUpButton.Click then
-        pcall(sp.SignUpButton.Click, sp.SignUpButton)
+    if not IsDialogShownNow() and sp.SignUpButton and type(sp.SignUpButton.Click) == "function" then
+        local spCanClick = true
+        if type(sp.SignUpButton.IsEnabled) == "function" then
+            local okSE, isSE = pcall(sp.SignUpButton.IsEnabled, sp.SignUpButton)
+            spCanClick = (okSE and not IsSecretValue(isSE) and isSE == true)
+        end
+        if spCanClick then
+            pcall(sp.SignUpButton.Click, sp.SignUpButton)
+        end
     end
     isPerformingAutoSignUp = false
 
+    dialog = GetDialog()
     -- True 1-Click Sign-Up: synchronously submit inside the user's hardware LeftButton click stack
-    if wantAutoSubmit and not IsPlayerInCombat() and not IsAnySignUpModifierDown() and IsDialogShownNow() then
+    if wantAutoSubmit and dialog and not IsPlayerInCombat() and not IsAnySignUpModifierDown() and IsDialogShownNow() then
         if OnLFGListApplicationDialogUpdateRoles then
             OnLFGListApplicationDialogUpdateRoles(dialog)
         end
@@ -2701,8 +2714,9 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
         if IsDialogShownNow() and SnapDialogSignUpUnderCursor then
             SnapDialogSignUpUnderCursor(dialog)
             C_Timer.After(0, function()
-                if dialog and IsDialogShownNow() and not IsPlayerInCombat() and not IsAnySignUpModifierDown() then
-                    SnapDialogSignUpUnderCursor(dialog)
+                local curDlg = GetDialog()
+                if curDlg and _dgDialogState[curDlg] and IsDialogShownNow() and not IsPlayerInCombat() and not IsAnySignUpModifierDown() then
+                    SnapDialogSignUpUnderCursor(curDlg)
                 end
             end)
         end
@@ -2712,7 +2726,6 @@ end
 local ScheduleAsyncResultRefilter
 local _dgEntryState = setmetatable({}, { __mode = "k" })
 local _dgPanelState = setmetatable({}, { __mode = "k" })
-local _dgDialogState = setmetatable({}, { __mode = "k" })
 local _dgWeak = {
     cancelBtn = setmetatable({}, { __mode = "k" }),
     owned = setmetatable({}, { __mode = "k" }),
@@ -5622,6 +5635,11 @@ local function FormatTeleportToastTitle(dungeonName, listingName)
     if lowerListing:find(lowerDungeon, 1, true) then
         return safeListing
     end
+    local normDungeon = NormalizeDungeonMatchName(safeDungeon)
+    local normListing = NormalizeDungeonMatchName(safeListing)
+    if normDungeon ~= "" and normListing == normDungeon then
+        return safeDungeon
+    end
     return safeDungeon .. " (" .. safeListing .. ")"
 end
 
@@ -5882,89 +5900,118 @@ function DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, re
     local dIcon = (matchedSlot and matchedSlot.icon) or 136095
     local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(dMapID, dCode, dName, (matchedSlot and matchedSlot.spellID) or (knownByMap and knownByMap.spellID))
 
+    local hasExplicitListingName = (type(listingName) == "string" and listingName ~= "") and true or false
     return {
         activityID = activityID,
         mapID = dMapID,
         code = dCode,
         dungeonName = dName,
-        listingName = (type(listingName) == "string" and listingName ~= "") and listingName or dName,
+        listingName = hasExplicitListingName and listingName or dName,
+        hasExplicitListingName = hasExplicitListingName,
         icon = dIcon,
         spellID = dSpellID,
         spellKnown = dSpellKnown and true or false,
     }
 end
 
-function DynamicGroup:CheckHostedListingTeleportToast()
+function DynamicGroup:CheckHostedListingTeleportToast(overrideMeta)
     if IsModuleDisabledInSuite("DynamicGroup") then return end
     local db = EnsureDB()
     if db.showGroupTeleportToast == false or IsYieldingSharedHooks() then return end
     if IsKeystoneActive() then return end
 
     local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
-    local hasActive = false
-    local entryInfo = nil
-    if C_LFGList and type(C_LFGList.HasActiveEntryInfo) == "function" and type(C_LFGList.GetActiveEntryInfo) == "function" then
-        local okH, rawHas = pcall(C_LFGList.HasActiveEntryInfo)
-        if okH and not IsSecretValue(rawHas) and rawHas == true then
-            local okE, rawInfo = pcall(C_LFGList.GetActiveEntryInfo)
-            if okE and type(rawInfo) == "table" and not IsSecretValue(rawInfo) then
-                hasActive = true
-                entryInfo = rawInfo
-            end
-        end
-    end
-
-    local activityID, listingName = nil, nil
-    if hasActive and entryInfo then
-        activityID, listingName = ExtractActivityAndNameFromInfo(entryInfo)
-    end
-
     local inGroup = SafeIsInGroup()
     local numMembers = inGroup and math.max(1, SafeGetNumGroupMembers()) or 1
     numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
 
-    if hasActive then
-        local prevMeta = self.lastHostedDungeonMeta
-        local nextMeta = nil
-        if activityID then
-            nextMeta = self:ResolveDungeonTeleportMetadata(activityID, listingName, true)
-        elseif listingName then
-            nextMeta = self:ResolveDungeonTeleportMetadata(nil, listingName, false) or prevMeta
-        else
-            nextMeta = prevMeta
-        end
-        local isNewListing = (not self.wasHostingListing)
-            or (activityID and self.lastActiveListingActivityID and activityID ~= self.lastActiveListingActivityID)
-            or (nextMeta and prevMeta and nextMeta.mapID and prevMeta.mapID and nextMeta.mapID ~= prevMeta.mapID)
-            or (nextMeta and prevMeta and nextMeta.dungeonName and prevMeta.dungeonName and nextMeta.dungeonName ~= prevMeta.dungeonName)
-        self.wasHostingListing = true
-        if activityID then
-            self.lastActiveListingActivityID = activityID
-        end
-        if isNewListing then
-            self.teleportToastDismissedForGroup = false
-        end
-        self.lastHostedDungeonMeta = nextMeta
+    if overrideMeta then
+        self.lastHostedDungeonMeta = overrideMeta
     else
-        local withinCreateGrace = (self._lastCreateListingTime ~= nil)
-            and ((now - self._lastCreateListingTime) < 5.0)
-            and (self.lastHostedDungeonMeta ~= nil)
-        if not withinCreateGrace or numMembers >= 5 then
-            self.wasHostingListing = false
+        local hasActive = false
+        local entryInfo = nil
+        if C_LFGList and type(C_LFGList.HasActiveEntryInfo) == "function" and type(C_LFGList.GetActiveEntryInfo) == "function" then
+            local okH, rawHas = pcall(C_LFGList.HasActiveEntryInfo)
+            if okH and not IsSecretValue(rawHas) and rawHas == true then
+                local okE, rawInfo = pcall(C_LFGList.GetActiveEntryInfo)
+                if okE and type(rawInfo) == "table" and not IsSecretValue(rawInfo) then
+                    hasActive = true
+                    entryInfo = rawInfo
+                end
+            end
         end
-        if not inGroup then
-            if not withinCreateGrace then
-                self.lastActiveListingActivityID = nil
-                self.lastHostedDungeonMeta = nil
-                self.teleportToastDismissedForGroup = false
+
+        local activityID, listingName = nil, nil
+        if hasActive and entryInfo then
+            activityID, listingName = ExtractActivityAndNameFromInfo(entryInfo)
+        end
+
+        if hasActive then
+            local prevMeta = self.lastHostedDungeonMeta
+            -- Ignore stale pre-server-ack GetActiveEntryInfo immediately after UpdateListing switched dungeons
+            local isStalePreUpdateAck = activityID
+                and self._preUpdateListingActivityID
+                and activityID == self._preUpdateListingActivityID
+                and self._lastCreateListingTime
+                and ((now - self._lastCreateListingTime) < 1.5)
+                and (prevMeta ~= nil)
+            if not isStalePreUpdateAck then
+                self._preUpdateListingActivityID = nil
+                local effectiveListingName = listingName
+                if (not effectiveListingName or effectiveListingName == "") and prevMeta
+                    and prevMeta.listingName and prevMeta.listingName ~= "" and prevMeta.listingName ~= prevMeta.dungeonName
+                    and ((activityID and prevMeta.activityID and activityID == prevMeta.activityID) or (not activityID)) then
+                    effectiveListingName = prevMeta.listingName
+                end
+                local nextMeta = nil
+                if activityID then
+                    nextMeta = self:ResolveDungeonTeleportMetadata(activityID, effectiveListingName, true)
+                elseif effectiveListingName then
+                    nextMeta = self:ResolveDungeonTeleportMetadata(nil, effectiveListingName, false) or prevMeta
+                else
+                    nextMeta = prevMeta
+                end
+                local isNewListing = (not self.wasHostingListing)
+                    or (activityID and self.lastActiveListingActivityID and activityID ~= self.lastActiveListingActivityID)
+                    or (nextMeta and prevMeta and nextMeta.mapID and prevMeta.mapID and nextMeta.mapID ~= prevMeta.mapID)
+                    or (nextMeta and prevMeta and nextMeta.dungeonName and prevMeta.dungeonName and nextMeta.dungeonName ~= prevMeta.dungeonName)
+                self.wasHostingListing = true
+                if activityID then
+                    self.lastActiveListingActivityID = activityID
+                end
+                if isNewListing then
+                    self.teleportToastDismissedForGroup = false
+                end
+                self.lastHostedDungeonMeta = nextMeta
+                if activityID and not nextMeta then
+                    if self.activeTeleportToastData and not self.activeTeleportToastData.isPreview then
+                        self:HideTeleportToast(false)
+                    end
+                    return
+                end
             end
-            local curToast = self.activeTeleportToastData
-            local withinJoinGrace = curToast and not curToast.isPreview and not curToast.isHosted
-                and not curToast.hasSeenInGroup and curToast.joinedAt and ((now - curToast.joinedAt) < 3.0)
-            if curToast and not curToast.isPreview and not withinJoinGrace then
-                self:HideTeleportToast(false)
+        else
+            local withinCreateGrace = (self._lastCreateListingTime ~= nil)
+                and ((now - self._lastCreateListingTime) < 5.0)
+                and (self.lastHostedDungeonMeta ~= nil)
+            if not withinCreateGrace or numMembers >= 5 then
+                self.wasHostingListing = false
             end
-            return
+            if not inGroup then
+                if not withinCreateGrace then
+                    self.lastActiveListingActivityID = nil
+                    self.lastHostedDungeonMeta = nil
+                    self._preUpdateListingActivityID = nil
+                    self.teleportToastDismissedForGroup = false
+                end
+                local curToast = self.activeTeleportToastData
+                local withinJoinGrace = curToast and not curToast.isPreview and not curToast.isHosted
+                    and not curToast.hasSeenInGroup and curToast.joinedAt and ((now - curToast.joinedAt) < 3.0)
+                if curToast and not curToast.isPreview and not withinJoinGrace then
+                    self:HideTeleportToast(false)
+                end
+                return
+            end
         end
     end
 
@@ -5990,10 +6037,22 @@ function DynamicGroup:CheckHostedListingTeleportToast()
             or (meta.dungeonName and cur.dungeonName and meta.dungeonName == cur.dungeonName)
         if sameTarget then
             cur.hasSeenInGroup = true
-            if meta.listingName and meta.listingName ~= "" then
+            local prevListingName = cur.listingName
+            if meta.listingName and meta.listingName ~= ""
+                and (meta.hasExplicitListingName == true or meta.listingName ~= meta.dungeonName or not cur.listingName or cur.listingName == "") then
                 cur.listingName = meta.listingName
             end
-            self:UpdateTeleportToast(true)
+            local titleChanged = (cur.listingName ~= prevListingName)
+            local prevCount = cur.lastMemberCount or 0
+            local countIncreased = (numMembers > prevCount)
+            local countChanged = (numMembers ~= prevCount)
+            local isShownNow = (self.teleportToast and self.teleportToast.IsShown and self.teleportToast:IsShown()) and true or false
+            if countIncreased or titleChanged or self.pendingTeleportToastUpdate or (countChanged and isShownNow) then
+                self:UpdateTeleportToast(countIncreased)
+            elseif countChanged then
+                cur.numMembers = numMembers
+                cur.lastMemberCount = numMembers
+            end
             return
         end
     end
@@ -6096,31 +6155,39 @@ function DynamicGroup:TriggerJoinerTeleportToast(searchResultID, groupName, sour
 
     -- Dedupe back-to-back LFG_LIST_APPLICATION_STATUS_UPDATED ("inviteaccepted") & LFG_LIST_JOINED_GROUP
     local cur = self.activeTeleportToastData
-    local targetSig = (safeResultID and ("rid:" .. tostring(safeResultID)))
-        or (meta.mapID and ("map:" .. tostring(meta.mapID)))
-        or (meta.activityID and ("act:" .. tostring(meta.activityID)))
-        or ("name:" .. tostring(meta.dungeonName or ""))
+    local resolvedResultID = safeResultID or (pendingFallback and pendingFallback.resultID) or nil
+    local function MatchesJoinTarget(ref)
+        if type(ref) ~= "table" then return false end
+        if resolvedResultID and ref.resultID and resolvedResultID == ref.resultID then return true end
+        if meta.mapID and ref.mapID and meta.mapID == ref.mapID then return true end
+        if meta.activityID and ref.activityID and meta.activityID == ref.activityID then return true end
+        if meta.dungeonName and ref.dungeonName and meta.dungeonName == ref.dungeonName then return true end
+        return false
+    end
     local isRecentSameJoin = (self._lastJoinToastTime ~= nil)
         and ((now - self._lastJoinToastTime) < 5.0)
         and (
-            (self._lastJoinToastSig and self._lastJoinToastSig == targetSig)
-            or (cur and not cur.isPreview and (
-                (safeResultID and cur.resultID and safeResultID == cur.resultID)
-                or (meta.mapID and cur.mapID and meta.mapID == cur.mapID)
-                or (meta.activityID and cur.activityID and meta.activityID == cur.activityID)
-                or (meta.dungeonName and cur.dungeonName and meta.dungeonName == cur.dungeonName)
-            ))
+            MatchesJoinTarget(self._lastJoinToastMeta)
+            or (cur and not cur.isPreview and MatchesJoinTarget(cur))
         )
     if isRecentSameJoin then
         if cur and not cur.isPreview then
             if inGroup then
                 cur.hasSeenInGroup = true
             end
-            if meta.listingName and meta.listingName ~= "" and (not cur.listingName or cur.listingName == cur.dungeonName) then
-                cur.listingName = meta.listingName
+            local titleUpgraded = false
+            if meta.listingName and meta.listingName ~= ""
+                and (meta.listingName ~= meta.dungeonName)
+                and (not cur.listingName or cur.listingName == "" or cur.listingName == cur.dungeonName) then
+                if cur.listingName ~= meta.listingName then
+                    cur.listingName = meta.listingName
+                    titleUpgraded = true
+                end
             end
             if curMembers > (cur.lastMemberCount or 0) then
                 self:UpdateTeleportToast(true)
+            elseif titleUpgraded then
+                self:UpdateTeleportToast(false)
             end
             return
         elseif self.teleportToastDismissedForGroup then
@@ -6129,11 +6196,16 @@ function DynamicGroup:TriggerJoinerTeleportToast(searchResultID, groupName, sour
     end
 
     self._lastJoinToastTime = now
-    self._lastJoinToastSig = targetSig
+    self._lastJoinToastMeta = {
+        resultID = resolvedResultID,
+        mapID = meta.mapID,
+        activityID = meta.activityID,
+        dungeonName = meta.dungeonName,
+    }
     self.teleportToastDismissedForGroup = false
     self.pendingTeleportToastHide = false
     self.activeTeleportToastData = {
-        resultID = safeResultID or (pendingFallback and pendingFallback.resultID) or nil,
+        resultID = resolvedResultID,
         activityID = meta.activityID,
         mapID = meta.mapID,
         code = meta.code,
@@ -6209,6 +6281,7 @@ function DynamicGroup:TriggerTeleportToastPreview(mode)
 
     local isFull = (mode == "FULL")
     local count = isFull and 5 or 3
+    self.pendingTeleportToastHide = false
     self.activeTeleportToastData = {
         isPreview = true,
         previewCount = count,
@@ -6621,20 +6694,23 @@ local function ExtractCreateOrUpdateListingArgs(a1, a2)
             listingName = a2
         end
     end
-    if (not activityID or not listingName) and C_LFGList and type(C_LFGList.GetActiveEntryInfo) == "function" then
-        local okE, eInfo = pcall(C_LFGList.GetActiveEntryInfo)
-        if okE and type(eInfo) == "table" and not IsSecretValue(eInfo) then
-            local eAct, eName = ExtractActivityAndNameFromInfo(eInfo)
-            if not activityID and eAct then activityID = eAct end
-            if not listingName and eName then listingName = eName end
-        end
-    end
+    -- Prefer EntryCreation.Name before GetActiveEntryInfo because GetActiveEntryInfo still holds the prior listing pre-ack
     if not listingName and _G.LFGListFrame and _G.LFGListFrame.EntryCreation and _G.LFGListFrame.EntryCreation.Name then
         local nameBox = _G.LFGListFrame.EntryCreation.Name
         if type(nameBox.GetText) == "function" then
             local okN, rawN = pcall(nameBox.GetText, nameBox)
             if okN and type(rawN) == "string" and not IsSecretValue(rawN) and rawN ~= "" then
                 listingName = rawN
+            end
+        end
+    end
+    if (not activityID or not listingName) and C_LFGList and type(C_LFGList.GetActiveEntryInfo) == "function" then
+        local okE, eInfo = pcall(C_LFGList.GetActiveEntryInfo)
+        if okE and type(eInfo) == "table" and not IsSecretValue(eInfo) then
+            local eAct, eName = ExtractActivityAndNameFromInfo(eInfo)
+            if not activityID and eAct then activityID = eAct end
+            if not listingName and eName and (not activityID or not eAct or eAct == activityID) then
+                listingName = eName
             end
         end
     end
@@ -6646,16 +6722,22 @@ local function OnLFGListCreateOrUpdateListing(a1, a2)
     local activityID, listingName = ExtractCreateOrUpdateListingArgs(a1, a2)
     if not activityID and not listingName then return end
     local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+    local prevActiveActivityID = DynamicGroup.lastActiveListingActivityID
+    local prevMeta = DynamicGroup.lastHostedDungeonMeta
     local requireDungeon = (activityID ~= nil)
     local meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, requireDungeon)
-    local prevMeta = DynamicGroup.lastHostedDungeonMeta
     local isNewListing = (not DynamicGroup.wasHostingListing)
-        or (activityID and DynamicGroup.lastActiveListingActivityID and activityID ~= DynamicGroup.lastActiveListingActivityID)
+        or (activityID and prevActiveActivityID and activityID ~= prevActiveActivityID)
         or (meta and prevMeta and meta.mapID and prevMeta.mapID and meta.mapID ~= prevMeta.mapID)
         or (meta and prevMeta and meta.dungeonName and prevMeta.dungeonName and meta.dungeonName ~= prevMeta.dungeonName)
     if meta then
         DynamicGroup.wasHostingListing = true
         DynamicGroup._lastCreateListingTime = now
+        if activityID and prevActiveActivityID and activityID ~= prevActiveActivityID then
+            DynamicGroup._preUpdateListingActivityID = prevActiveActivityID
+        else
+            DynamicGroup._preUpdateListingActivityID = nil
+        end
         if activityID then
             DynamicGroup.lastActiveListingActivityID = activityID
         end
@@ -6664,13 +6746,17 @@ local function OnLFGListCreateOrUpdateListing(a1, a2)
             DynamicGroup.teleportToastDismissedForGroup = false
         end
         if SafeIsInGroup() then
-            DynamicGroup:CheckHostedListingTeleportToast()
+            DynamicGroup:CheckHostedListingTeleportToast(meta)
         end
     elseif activityID then
         DynamicGroup.wasHostingListing = true
         DynamicGroup._lastCreateListingTime = now
+        DynamicGroup._preUpdateListingActivityID = (prevActiveActivityID and activityID ~= prevActiveActivityID) and prevActiveActivityID or nil
         DynamicGroup.lastActiveListingActivityID = activityID
         DynamicGroup.lastHostedDungeonMeta = nil
+        if DynamicGroup.activeTeleportToastData and not DynamicGroup.activeTeleportToastData.isPreview then
+            DynamicGroup:HideTeleportToast(false)
+        end
     end
 end
 
@@ -6827,12 +6913,12 @@ function DynamicGroup:InstallLFGHooks()
         end)
     end
     if not hk.applyToGroup and C_LFGList and type(C_LFGList.ApplyToGroup) == "function" then
-        hk.applyToGroup = true
-        pcall(hooksecurefunc, C_LFGList, "ApplyToGroup", function(searchResultID)
+        local okH = pcall(hooksecurefunc, C_LFGList, "ApplyToGroup", function(searchResultID)
             if IsModuleDisabledInSuite("DynamicGroup") or IsYieldingSharedHooks() then return end
             if IsSecretValue(searchResultID) or type(searchResultID) ~= "number" or searchResultID <= 0 then return end
             CacheSearchResultDungeonMeta(searchResultID, nil, nil, false)
         end)
+        if okH then hk.applyToGroup = true end
     end
     if not hk.inviteDialogShow and type(_G.LFGListInviteDialog_Show) == "function" then
         hk.inviteDialogShow = true
@@ -6846,14 +6932,28 @@ function DynamicGroup:InstallLFGHooks()
             elseif type(a1) == "table" and not IsSecretValue(a1) and not IsSecretValue(a1.resultID) and type(a1.resultID) == "number" and a1.resultID > 0 then
                 rID = a1.resultID
             end
+            local fallbackText = nil
+            if type(a1) == "table" and not IsSecretValue(a1) then
+                if a1.GroupName and type(a1.GroupName.GetText) == "function" then
+                    local okG, gn = pcall(a1.GroupName.GetText, a1.GroupName)
+                    if okG and type(gn) == "string" and not IsSecretValue(gn) and gn ~= "" then
+                        fallbackText = gn
+                    end
+                end
+                if not fallbackText and a1.ActivityName and type(a1.ActivityName.GetText) == "function" then
+                    local okA, an = pcall(a1.ActivityName.GetText, a1.ActivityName)
+                    if okA and type(an) == "string" and not IsSecretValue(an) and an ~= "" then
+                        fallbackText = an
+                    end
+                end
+            end
             if rID then
-                CacheSearchResultDungeonMeta(rID, nil, nil, true)
+                CacheSearchResultDungeonMeta(rID, nil, fallbackText, true)
             end
         end)
     end
     if not hk.acceptInvite and C_LFGList and type(C_LFGList.AcceptInvite) == "function" then
-        hk.acceptInvite = true
-        pcall(hooksecurefunc, C_LFGList, "AcceptInvite", function(resultID)
+        local okH = pcall(hooksecurefunc, C_LFGList, "AcceptInvite", function(resultID)
             if IsModuleDisabledInSuite("DynamicGroup") or IsYieldingSharedHooks() then return end
             if IsSecretValue(resultID) or type(resultID) ~= "number" or resultID <= 0 then return end
             local entry = CacheSearchResultDungeonMeta(resultID, nil, nil, true)
@@ -6861,14 +6961,15 @@ function DynamicGroup:InstallLFGHooks()
                 entry.acceptedAt = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
             end
         end)
+        if okH then hk.acceptInvite = true end
     end
     if not hk.createListing and C_LFGList and type(C_LFGList.CreateListing) == "function" then
-        hk.createListing = true
-        pcall(hooksecurefunc, C_LFGList, "CreateListing", OnLFGListCreateOrUpdateListing)
+        local okH = pcall(hooksecurefunc, C_LFGList, "CreateListing", OnLFGListCreateOrUpdateListing)
+        if okH then hk.createListing = true end
     end
     if not hk.updateListing and C_LFGList and type(C_LFGList.UpdateListing) == "function" then
-        hk.updateListing = true
-        pcall(hooksecurefunc, C_LFGList, "UpdateListing", OnLFGListCreateOrUpdateListing)
+        local okH = pcall(hooksecurefunc, C_LFGList, "UpdateListing", OnLFGListCreateOrUpdateListing)
+        if okH then hk.updateListing = true end
     end
     if not hk.saveAdvFilter and C_LFGList and type(C_LFGList.SaveAdvancedFilter) == "function" then
         hk.saveAdvFilter = true
@@ -9805,17 +9906,23 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             local curToast = self.activeTeleportToastData
             local withinJoinGrace = curToast and not curToast.isPreview and not curToast.isHosted
                 and not curToast.hasSeenInGroup and curToast.joinedAt and ((now - curToast.joinedAt) < 3.0)
+            local hasActiveListing = false
+            if C_LFGList and type(C_LFGList.HasActiveEntryInfo) == "function" then
+                local okH, rawH = pcall(C_LFGList.HasActiveEntryInfo)
+                hasActiveListing = (okH and not IsSecretValue(rawH) and rawH == true)
+            end
             local withinCreateGrace = (self._lastCreateListingTime ~= nil)
                 and ((now - self._lastCreateListingTime) < 5.0)
                 and (self.lastHostedDungeonMeta ~= nil)
-            if not withinCreateGrace then
+            if not withinCreateGrace and not hasActiveListing then
                 self.lastHostedDungeonMeta = nil
                 self.wasHostingListing = false
                 self.lastActiveListingActivityID = nil
+                self._preUpdateListingActivityID = nil
             end
             if not withinJoinGrace then
                 self.teleportToastDismissedForGroup = false
-                self._lastJoinToastSig = nil
+                self._lastJoinToastMeta = nil
                 self._lastJoinToastTime = nil
                 if curToast and not curToast.isPreview then
                     self:HideTeleportToast(false)
@@ -9826,8 +9933,17 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                 self:HideTeleportToast(false)
                 self:CheckHostedListingTeleportToast()
             else
-                self.activeTeleportToastData.hasSeenInGroup = true
-                self:UpdateTeleportToast(true)
+                local cur = self.activeTeleportToastData
+                cur.hasSeenInGroup = true
+                local liveCount = math.max(1, math.min(5, SafeGetNumGroupMembers()))
+                local prevCount = cur.lastMemberCount or 0
+                local isShownNow = (self.teleportToast and self.teleportToast.IsShown and self.teleportToast:IsShown()) and true or false
+                if liveCount > prevCount or self.pendingTeleportToastUpdate or (liveCount ~= prevCount and isShownNow) then
+                    self:UpdateTeleportToast(true)
+                elseif liveCount ~= prevCount then
+                    cur.numMembers = liveCount
+                    cur.lastMemberCount = liveCount
+                end
             end
         else
             self:CheckHostedListingTeleportToast()
@@ -9844,6 +9960,8 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         if inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
             if self.activeTeleportToastData and (IsKeystoneActive() or IsPlayerAlreadyInsideTargetDungeon(self.activeTeleportToastData)) then
                 self:HideTeleportToast(true)
+            elseif SafeIsInGroup() and not self.activeTeleportToastData and not IsKeystoneActive() then
+                self:CheckHostedListingTeleportToast()
             end
         elseif SafeIsInGroup() and not self.activeTeleportToastData and not IsKeystoneActive() then
             self:CheckHostedListingTeleportToast()
