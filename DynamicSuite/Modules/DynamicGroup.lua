@@ -2061,7 +2061,7 @@ local function ExtractActivityAndNameFromInfo(info)
     return activityID, listingName
 end
 
-local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallbackListingName, markPendingInvite)
+local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallbackListingName, markPendingInvite, fallbackActivityText)
     if IsSecretValue(resultID) or type(resultID) ~= "number" or resultID <= 0 then
         return nil
     end
@@ -2086,17 +2086,36 @@ local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallba
         end
     end
 
-    local meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+    local safeActivityText = (type(fallbackActivityText) == "string" and not IsSecretValue(fallbackActivityText) and fallbackActivityText ~= "") and fallbackActivityText or nil
+    local resolvedFromActivityText = false
+    local meta = nil
+    if activityID then
+        meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+    elseif safeActivityText then
+        meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
+        resolvedFromActivityText = (meta ~= nil)
+    end
+    if not meta then
+        meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+        resolvedFromActivityText = false
+    end
+    if not meta and safeActivityText and activityID then
+        meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
+        resolvedFromActivityText = (meta ~= nil)
+    end
     local stored = nil
     if meta then
+        local effectiveListingName = (listingName and listingName ~= "") and listingName
+            or (not resolvedFromActivityText and meta.listingName)
+            or meta.dungeonName
         stored = {
             resultID = resultID,
             activityID = meta.activityID or activityID,
             mapID = meta.mapID,
             code = meta.code,
             dungeonName = meta.dungeonName,
-            listingName = (listingName and listingName ~= "") and listingName or meta.listingName or meta.dungeonName,
-            name = listingName or meta.listingName,
+            listingName = effectiveListingName,
+            name = effectiveListingName,
             icon = meta.icon,
             spellID = meta.spellID,
             spellKnown = meta.spellKnown and true or false,
@@ -6675,9 +6694,10 @@ end
 
 local function OnLFGSearchEntryClick(entry, button)
     if button ~= nil and (IsSecretValue(button) or button ~= "LeftButton") then return end
-    if IsAnySignUpModifierDown() then return end
     local db = EnsureDB()
     if not db.oneClickSignUp then return end
+    -- Holding Shift/Alt/Ctrl passes through to PerformLFGSignUp with wantAutoSubmit=false
+    -- so the Sign-Up dialog opens normally at its centred position for manual role/note editing.
     local st = entry and GetEntryState(entry)
     local lockedID = st and st.pressedResultID
     if st then st.pressedResultID = nil end
@@ -6924,31 +6944,58 @@ function DynamicGroup:InstallLFGHooks()
         hk.inviteDialogShow = true
         hooksecurefunc("LFGListInviteDialog_Show", function(a1, a2)
             if IsModuleDisabledInSuite("DynamicGroup") or IsYieldingSharedHooks() then return end
+            local dlg = (type(a1) == "table" and not IsSecretValue(a1)) and a1 or _G.LFGListInviteDialog
             local rID = nil
             if not IsSecretValue(a2) and type(a2) == "number" and a2 > 0 then
                 rID = a2
             elseif not IsSecretValue(a1) and type(a1) == "number" and a1 > 0 then
                 rID = a1
-            elseif type(a1) == "table" and not IsSecretValue(a1) and not IsSecretValue(a1.resultID) and type(a1.resultID) == "number" and a1.resultID > 0 then
-                rID = a1.resultID
+            elseif type(dlg) == "table" and not IsSecretValue(dlg) and not IsSecretValue(dlg.resultID) and type(dlg.resultID) == "number" and dlg.resultID > 0 then
+                rID = dlg.resultID
             end
-            local fallbackText = nil
-            if type(a1) == "table" and not IsSecretValue(a1) then
-                if a1.GroupName and type(a1.GroupName.GetText) == "function" then
-                    local okG, gn = pcall(a1.GroupName.GetText, a1.GroupName)
+            local groupNameText, activityNameText = nil, nil
+            if type(dlg) == "table" and not IsSecretValue(dlg) then
+                if dlg.GroupName and type(dlg.GroupName.GetText) == "function" then
+                    local okG, gn = pcall(dlg.GroupName.GetText, dlg.GroupName)
                     if okG and type(gn) == "string" and not IsSecretValue(gn) and gn ~= "" then
-                        fallbackText = gn
+                        groupNameText = gn
                     end
                 end
-                if not fallbackText and a1.ActivityName and type(a1.ActivityName.GetText) == "function" then
-                    local okA, an = pcall(a1.ActivityName.GetText, a1.ActivityName)
+                if dlg.ActivityName and type(dlg.ActivityName.GetText) == "function" then
+                    local okA, an = pcall(dlg.ActivityName.GetText, dlg.ActivityName)
                     if okA and type(an) == "string" and not IsSecretValue(an) and an ~= "" then
-                        fallbackText = an
+                        activityNameText = an
                     end
                 end
             end
             if rID then
-                CacheSearchResultDungeonMeta(rID, nil, fallbackText, true)
+                CacheSearchResultDungeonMeta(rID, nil, groupNameText, true, activityNameText)
+            elseif activityNameText or groupNameText then
+                local resolvedFromAct = false
+                local meta = activityNameText and DynamicGroup:ResolveDungeonTeleportMetadata(nil, activityNameText, false) or nil
+                if meta then
+                    resolvedFromAct = true
+                elseif groupNameText then
+                    meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, groupNameText, false)
+                end
+                if meta then
+                    local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+                    local effListing = (groupNameText and groupNameText ~= "") and groupNameText
+                        or (not resolvedFromAct and meta.listingName)
+                        or meta.dungeonName
+                    recentPendingInviteMeta = {
+                        activityID = meta.activityID,
+                        mapID = meta.mapID,
+                        code = meta.code,
+                        dungeonName = meta.dungeonName,
+                        listingName = effListing,
+                        name = effListing,
+                        icon = meta.icon,
+                        spellID = meta.spellID,
+                        spellKnown = meta.spellKnown and true or false,
+                        timestamp = now,
+                    }
+                end
             end
         end)
     end

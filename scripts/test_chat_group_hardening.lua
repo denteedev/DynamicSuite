@@ -997,15 +997,22 @@ RunTest("T8: DynamicGroup 1-Click Sign-Up (Global & Mixin Click, Mod Bypass, Rol
         assertEqual(dlg._lastResultID, 102, addonFolder .. ": Mixin clicked resultID 102 passed to dialog")
         assertEqual(dlg.SignUpButton:IsEnabled(), true, addonFolder .. ": SignUpButton enabled after Mixin click")
 
-        -- (b) Holding Shift/Alt bypasses 1-Click Sign-Up
+        -- (b) Holding Shift/Alt opens dialog centred for manual editing without auto-clicking Sign Up or cursor-snapping
         dlg:Hide()
         h.AdvanceTime(0.5)
         modDown = true
+        local modSignUpClicks = 0
+        dlg.SignUpButton.Click = function() modSignUpClicks = modSignUpClicks + 1 end
         local entry3 = { resultID = 103 }
         env.LFGListSearchEntry_OnClick(entry3, "LeftButton")
         env.LFGListSearchEntryMixin.OnClick(entry3, "LeftButton")
-        assertEqual(dialogShowCalls, 2, addonFolder .. ": Holding Shift/Alt bypasses 1-Click Sign-Up")
-        assertEqual(dlg:IsShown(), false, addonFolder .. ": Dialog stays closed when modifier key is held")
+        assertEqual(dialogShowCalls, 3, addonFolder .. ": Holding Shift/Alt opens dialog once (debounced across global + mixin)")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Holding Shift/Alt opens dialog for manual role/note editing")
+        assertEqual(modSignUpClicks, 0, addonFolder .. ": Holding Shift/Alt never auto-clicks SignUpButton")
+        local modPt, _, modRelPt = dlg:GetPoint(1)
+        assertEqual(modPt, "CENTER", addonFolder .. ": Shift/Alt bypass keeps dialog CENTER anchored")
+        assertEqual(modRelPt, "CENTER", addonFolder .. ": Shift/Alt bypass restores centred position instead of cursor-snapping")
+        dlg.SignUpButton.Click = nil
         modDown = false
 
         -- (c) Explicit LFGListApplicationDialog_UpdateRoles checks role & calls UpdateValidState

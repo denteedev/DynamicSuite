@@ -516,6 +516,8 @@ local function CreateHarness(opts)
     env.LFGListSearchEntry_OnClick = function() end
     env.LFGListSearchEntryMixin = { OnClick = function() end }
     env.LFGListInviteDialog = NewWidget("Frame", "LFGListInviteDialog", env.UIParent)
+    env.LFGListInviteDialog.GroupName = env.LFGListInviteDialog:CreateFontString()
+    env.LFGListInviteDialog.ActivityName = env.LFGListInviteDialog:CreateFontString()
     env.LFGListInviteDialog_Show = function(d, rID)
         d.resultID = rID
         d:Show()
@@ -610,13 +612,31 @@ RunTest("T1: True 1-Click Sign-Up (Sync Click, Shift/Alt Bypass, Manual Sign Up,
         assertEqual(dlg.Description.EditBox:GetText(), "chill", addonFolder .. ": Persistent note filled before auto-submit")
         assertEqual(#h.timers, timersBefore, addonFolder .. ": No C_Timer.After scheduled when synchronous click closed dialog")
 
-        -- (1b) Holding Shift/Alt on row single-click bypasses 1-Click Sign-Up cleanly
+        -- (1b) Holding Shift or Alt on row single-click opens dialog centred WITHOUT auto-clicking Sign Up or cursor-snapping
         h.AdvanceTime(0.5)
+        timersBefore = #h.timers
         h.state.shiftDown = true
         env.LFGListSearchEntry_OnClick({ resultID = 102 }, "LeftButton")
-        assertEqual(dlg.SignUpButton._clickCount, 1, addonFolder .. ": Shift+Click never auto-submits")
-        assertEqual(dlg:IsShown(), false, addonFolder .. ": Shift+SingleClick does not trigger 1-Click Sign-Up")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Shift+SingleClick opens dialog for manual role/note editing")
+        assertEqual(dlg.SignUpButton._clickCount, 1, addonFolder .. ": Shift+SingleClick never auto-submits")
+        assertEqual(dlg.DamagerButton.CheckButton:GetChecked(), true, addonFolder .. ": Shift+SingleClick still auto-selects role")
+        local sPt, _, sRelPt = dlg:GetPoint(1)
+        assertEqual(sPt, "CENTER", addonFolder .. ": Shift+SingleClick keeps dialog CENTER anchored")
+        assertEqual(sRelPt, "CENTER", addonFolder .. ": Shift+SingleClick does not cursor-snap dialog")
+        assertEqual(#h.timers, timersBefore, addonFolder .. ": Shift+SingleClick schedules no fallback snap timer")
         h.state.shiftDown = false
+        dlg:Hide()
+
+        h.AdvanceTime(0.5)
+        h.state.altDown = true
+        env.LFGListSearchEntry_OnClick({ resultID = 102 }, "LeftButton")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Alt+SingleClick opens dialog for manual role/note editing")
+        assertEqual(dlg.SignUpButton._clickCount, 1, addonFolder .. ": Alt+SingleClick never auto-submits")
+        local aPt, _, aRelPt = dlg:GetPoint(1)
+        assertEqual(aPt, "CENTER", addonFolder .. ": Alt+SingleClick keeps dialog CENTER anchored")
+        assertEqual(aRelPt, "CENTER", addonFolder .. ": Alt+SingleClick does not cursor-snap dialog")
+        h.state.altDown = false
+        dlg:Hide()
 
         -- (1c) Holding Alt on double-click opens dialog centred WITHOUT auto-clicking SignUpButton
         local entry2 = env.CreateFrame("Button", nil, env.LFGListFrame.SearchPanel)
@@ -666,8 +686,32 @@ RunTest("T1: True 1-Click Sign-Up (Sync Click, Shift/Alt Bypass, Manual Sign Up,
         dlg._forceSignUpDisabled = false
         dlg:Hide()
 
+        -- Shift+SingleClick after a prior cursor-snap restores standard centred position,
+        -- AND any pending 0-delay fallback snap timer must NOT re-snap the dialog!
+        h.AdvanceTime(0.5)
+        dlg._forceSignUpDisabled = true
+        env.LFGListSearchEntry_OnClick({ resultID = 103 }, "LeftButton")
+        dlg._forceSignUpDisabled = false
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        h.state.shiftDown = true
+        env.LFGListSearchEntry_OnClick({ resultID = 103 }, "LeftButton")
+        h.AdvanceTime(0.05)
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Shift+SingleClick after fallback opens dialog for manual editing")
+        assertEqual(dlg.SignUpButton._clickCount, 1, addonFolder .. ": Shift+SingleClick after fallback never auto-clicks SignUpButton")
+        local srPt, _, srRelPt = dlg:GetPoint(1)
+        assertEqual(srPt, "CENTER", addonFolder .. ": Shift+SingleClick after fallback restores CENTER")
+        assertEqual(srRelPt, "CENTER", addonFolder .. ": Shift+SingleClick after fallback clears cursor snap and resists stale timer")
+        h.state.shiftDown = false
+        dlg:Hide()
+
         -- Manual open after a prior cursor-snap restores standard centred position,
         -- AND any pending 0-delay fallback snap timer must NOT re-snap the manually opened dialog!
+        h.AdvanceTime(0.5)
+        dlg._forceSignUpDisabled = true
+        env.LFGListSearchEntry_OnClick({ resultID = 103 }, "LeftButton")
+        dlg._forceSignUpDisabled = false
+        dlg:Hide()
         env.LFGListApplicationDialog_Show(dlg, 103)
         h.AdvanceTime(0.05)
         local rPt, _, rRelPt = dlg:GetPoint(1)
@@ -802,6 +846,65 @@ RunTest("T2: 5th-Member Auto-Delist Race (Nil SearchResultInfo, Secret groupName
         assertEqual(dg.teleportToast.titleText:GetText(), "Murder Row (+15 push)", "Deferred toast shows full dungeon name")
         assertEqual(dg.teleportToast.teleportBtn:GetAttribute("type1"), "spell", "Secure spell attribute bound safely out of combat")
         assertEqual(dg.teleportToast.teleportBtn._attrWritesInCombat, 0, "Zero SetAttribute writes occurred in combat")
+    end
+
+    -- (2d) LFGListInviteDialog_Show when GetSearchResultInfo is ALREADY nil and GroupName is a custom title
+    --      (no dungeon name in GroupName) -> ActivityName resolves the dungeon while preserving GroupName!
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local rID = 708
+        -- Search result already expired/delisted BEFORE invite dialog shows (never cached earlier)
+        h.state.searchResults[rID] = nil
+        env.LFGListInviteDialog.GroupName:SetText("+12 chill")
+        env.LFGListInviteDialog.ActivityName:SetText("Ruby Life Pools (Mythic Keystone)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, rID)
+        env.C_LFGList.AcceptInvite(rID)
+
+        h.state.inGroup = true
+        h.state.numGroupMembers = 5
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", secretName)
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "InviteDialog ActivityName resolves dungeon even when GetSearchResultInfo is nil and GroupName is custom")
+        assertEqual(dg.teleportToast.titleText:GetText(), "Ruby Life Pools (+12 chill)", "ActivityName resolves dungeon while preserving custom GroupName listing title")
+        assertEqual(dg.teleportToast.teleportBtn:GetAttribute("type1"), "spell", "ActivityName fallback binds secure teleport type1")
+        assertEqual(dg.teleportToast.teleportBtn:GetAttribute("spell1"), "Path of the Clutch Defender", "ActivityName fallback binds correct dungeon teleport spell")
+    end
+
+    -- (2e) LFGListInviteDialog_Show with secret resultID & secret GroupName, plain ActivityName ->
+    --      populates pending fallback with clean dungeon name and allows plain title upgrade on LFG_LIST_JOINED_GROUP
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        env.LFGListInviteDialog.GroupName:SetText(MakeStrictSecret("invGroupName"))
+        env.LFGListInviteDialog.ActivityName:SetText("Murder Row (Mythic Keystone)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, MakeStrictSecret("invResultID"))
+
+        h.state.inGroup = true
+        h.state.numGroupMembers = 4
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", MakeStrictSecret("r1"), "inviteaccepted", "invited", secretName)
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "Secret resultID + secret GroupName still resolves via ActivityName pending fallback")
+        assertEqual(dg.teleportToast.titleText:GetText(), "Murder Row", "Secret GroupName uses clean dungeonName instead of raw ActivityName suffix")
+        assertEqual(dg.teleportToast.teleportBtn:GetAttribute("spell1"), "Path of the Devious Smuggler", "Binds Murder Row teleport spell")
+        assertEqual(#h.sounds, 1, "Single join chime played")
+
+        h.AdvanceTime(0.05)
+        h.FireEvent("LFG_LIST_JOINED_GROUP", MakeStrictSecret("r2"), "+14 vault")
+        assertEqual(dg.teleportToast.titleText:GetText(), "Murder Row (+14 vault)", "Follow-up event upgrades title cleanly with real listing name")
+        assertEqual(#h.sounds, 1, "Title upgrade plays zero duplicate sounds")
     end
 end)
 
